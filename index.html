@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="臺灣多殺型巴斯德桿菌年度與區域互動式資料儀表板" />
+  <title>臺灣多殺型巴斯德桿菌區域年度儀表板</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+<body>
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Pasteurella multocida surveillance</p>
+      <h1>臺灣多殺型巴斯德桿菌<br />區域 × 年度互動式儀表板</h1>
+      <p class="subtitle">
+        支援本機 Excel／CSV 與公開 Google 試算表資料源；預設對應
+        「區域分類明細」與「年度地區分離率」格式。
+      </p>
+    </div>
+    <div class="definition-box">
+      <strong>統計定義</strong>
+      <p><b>菌株分布比例</b>＝某地區去重分離紀錄 ÷ 全部去重分離紀錄。</p>
+      <p><b>分離率</b>＝陽性數 ÷ 總送檢病例數（或總檢體數），必須有分母。</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel source-panel">
+      <div class="section-heading">
+        <div>
+          <h2>1. 載入資料</h2>
+          <p>資料只在瀏覽器處理；本機上傳檔案不會自動傳送到伺服器。</p>
+        </div>
+        <button id="loadDemoButton" class="button ghost" type="button">載入格式示範</button>
+      </div>
+
+      <div class="source-grid">
+        <label class="upload-card">
+          <span class="source-title">Excel／CSV</span>
+          <span class="source-help">建議直接使用「巴斯德資料菌株分析_區域年度整理.xlsx」</span>
+          <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" />
+        </label>
+
+        <div class="url-card">
+          <span class="source-title">Google 試算表</span>
+          <span class="source-help">貼上已公開／發布的 CSV 網址，或含 gid 的 Google Sheets 網址。</span>
+          <div class="inline-form">
+            <input id="sheetUrlInput" type="url" placeholder="https://docs.google.com/spreadsheets/d/.../edit?gid=..." />
+            <button id="loadSheetButton" class="button primary" type="button">讀取</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="controls-row">
+        <label>
+          工作表
+          <select id="sheetSelect" disabled>
+            <option>尚未載入 Excel</option>
+          </select>
+        </label>
+        <label>
+          指標
+          <select id="metricSelect">
+            <option value="count">去重分離紀錄數</option>
+            <option value="share">菌株分布比例</option>
+            <option value="rate">分離率（需分母）</option>
+          </select>
+        </label>
+        <label>
+          年度
+          <select id="yearSelect">
+            <option value="ALL">全部年度</option>
+          </select>
+        </label>
+        <label>
+          病例區域
+          <select id="regionSelect">
+            <option value="ALL">全部區域</option>
+          </select>
+        </label>
+        <label>
+          縣市
+          <select id="countySelect">
+            <option value="ALL">全部縣市</option>
+          </select>
+        </label>
+        <label class="check-label">
+          <input id="includePendingCheckbox" type="checkbox" checked />
+          納入待確認
+        </label>
+      </div>
+
+      <div id="statusMessage" class="status info">
+        請先載入 Excel、CSV 或公開 Google 試算表。
+      </div>
+    </section>
+
+    <section class="kpi-grid" aria-label="核心指標">
+      <article class="kpi-card">
+        <span>去重分離紀錄</span>
+        <strong id="kpiRecords">—</strong>
+        <small>依目前篩選條件</small>
+      </article>
+      <article class="kpi-card">
+        <span>資料年度</span>
+        <strong id="kpiYears">—</strong>
+        <small>西元年</small>
+      </article>
+      <article class="kpi-card">
+        <span>地區可判定率</span>
+        <strong id="kpiResolved">—</strong>
+        <small>非「待確認」紀錄</small>
+      </article>
+      <article class="kpi-card">
+        <span>待確認紀錄</span>
+        <strong id="kpiPending">—</strong>
+        <small>需補地址或名稱對照</small>
+      </article>
+    </section>
+
+    <section class="dashboard-grid">
+      <article class="panel chart-card wide">
+        <div class="chart-title-row">
+          <div>
+            <h2>年度 × 病例區域</h2>
+            <p id="annualChartNote">依年份比較雲林區、高雄屏東區與待確認。</p>
+          </div>
+          <button class="button ghost download-chart" data-chart="annualChart">下載 PNG</button>
+        </div>
+        <div id="annualChart" class="chart"></div>
+      </article>
+
+      <article class="panel chart-card">
+        <div class="chart-title-row">
+          <div>
+            <h2>各縣市資料</h2>
+            <p>顯示前 15 個縣市；可透過上方條件篩選。</p>
+          </div>
+          <button class="button ghost download-chart" data-chart="countyChart">下載 PNG</button>
+        </div>
+        <div id="countyChart" class="chart"></div>
+      </article>
+
+      <article class="panel chart-card">
+        <div class="chart-title-row">
+          <div>
+            <h2>區域構成</h2>
+            <p>比較核心縣市、鄰近歸區與待確認。</p>
+          </div>
+          <button class="button ghost download-chart" data-chart="classificationChart">下載 PNG</button>
+        </div>
+        <div id="classificationChart" class="chart"></div>
+      </article>
+
+      <article class="panel chart-card wide">
+        <div class="chart-title-row">
+          <div>
+            <h2>資料品質趨勢</h2>
+            <p>每年地區已判定與待確認紀錄的變化。</p>
+          </div>
+          <button class="button ghost download-chart" data-chart="qualityChart">下載 PNG</button>
+        </div>
+        <div id="qualityChart" class="chart"></div>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <div>
+          <h2>2. 篩選後明細</h2>
+          <p>預設隱藏畜主姓名，避免公開網站直接揭露場戶個資。</p>
+        </div>
+        <div class="button-row">
+          <label class="check-label compact">
+            <input id="showOwnerCheckbox" type="checkbox" />
+            顯示畜主
+          </label>
+          <button id="downloadCsvButton" class="button primary" type="button">下載篩選結果 CSV</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="dataTable">
+          <thead>
+            <tr>
+              <th>西元年</th>
+              <th>病例區域</th>
+              <th>原始縣市</th>
+              <th>區域屬性</th>
+              <th>分離部位</th>
+              <th>免疫室編號</th>
+              <th class="owner-column hidden">畜主</th>
+              <th>資料品質註記</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="8" class="empty-cell">尚未載入資料</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel methods">
+      <h2>3. 建議資料表結構</h2>
+      <div class="method-grid">
+        <div>
+          <h3>A. 菌株明細模式</h3>
+          <p>適用於現有「區域分類明細」：每列是一筆分離紀錄。</p>
+          <code>西元年、免疫室編號、分離部位、病例區域、原始縣市、區域屬性、去重鍵</code>
+        </div>
+        <div>
+          <h3>B. 真正分離率模式</h3>
+          <p>每列是一個「年度 × 地區」統計單位。</p>
+          <code>西元年、病例區域／原始縣市、陽性數、總檢體數</code>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>研究用途資料儀表板｜公開部署前請移除畜主姓名、電話、地址與可識別場戶資訊。</p>
+  </footer>
+
+  <script src="./app.js"></script>
+</body>
+</html>
